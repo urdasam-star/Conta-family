@@ -593,10 +593,8 @@ function renderItemsList(items,cats,filter){
       </div>
       <div class="item-right">
         <span class="${isIngreso?'amount-green':'amount-red'}">${isIngreso?'+':'-'}${fmt(e.amount)} €</span>
-        ${!e.isFixed?`
-          <button class="icon-btn" onclick='editItem("${e.id}","${e._type}",${safeE})'>✏️</button>
-          <button class="icon-btn" onclick="deleteItem('${e.id}','${e._type}')">🗑️</button>
-        `:''}
+        <button class="icon-btn" onclick='editItem("${e.id}","${e._type}",${safeE})'>✏️</button>
+        <button class="icon-btn" onclick="deleteItem('${e.id}','${e._type}')">🗑️</button>
       </div>
     </div>`;
   }).join('');
