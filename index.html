@@ -197,10 +197,26 @@ body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-heig
   <div class="modal">
     <div class="modal-handle"></div>
     <h3>Nuevo gasto fijo</h3>
-    <div class="field"><label>Nombre</label><input type="text" id="fix-name" placeholder="Ej: Hipoteca, Netflix..."></div>
+    <div class="field"><label>Nombre</label><input type="text" id="fix-name" placeholder="Ej: Hipoteca, Seguro coche..."></div>
     <div class="field"><label>Importe (€)</label><input type="number" id="fix-amount" placeholder="0.00" step="0.01" min="0"></div>
     <div class="field"><label>Categoría</label><select id="fix-cat"></select></div>
+    <div class="field"><label>Frecuencia</label>
+      <select id="fix-freq" onchange="toggleFixedMonth()">
+        <option value="monthly">Mensual</option>
+        <option value="annual">Anual</option>
+      </select>
+    </div>
     <div class="field"><label>Día del mes</label><input type="number" id="fix-day" value="1" min="1" max="28"></div>
+    <div class="field" id="fix-month-field" style="display:none"><label>Mes en que se cobra</label>
+      <select id="fix-month">
+        <option value="0">Enero</option><option value="1">Febrero</option>
+        <option value="2">Marzo</option><option value="3">Abril</option>
+        <option value="4">Mayo</option><option value="5">Junio</option>
+        <option value="6">Julio</option><option value="7">Agosto</option>
+        <option value="8">Septiembre</option><option value="9">Octubre</option>
+        <option value="10">Noviembre</option><option value="11">Diciembre</option>
+      </select>
+    </div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-fixed')">Cancelar</button>
       <button class="btn" style="flex:2" onclick="saveFixed()">Guardar</button>
@@ -400,12 +416,15 @@ async function autoApplyFixed() {
   const batch = db.batch();
   fixedSnap.forEach(doc => {
     const f = doc.data();
+    const isAnnual = f.freq === 'annual';
+    // Si es anual, solo aplicar si el mes coincide
+    if (isAnnual && f.month !== month) return;
     const day = Math.min(f.day||1, new Date(year,month+1,0).getDate());
     const ref = db.collection('expenses').doc();
     batch.set(ref, {
       amount: f.amount, description: f.name, category: f.category,
       date: TS(new Date(year,month,day)), monthKey: mk,
-      uid:'auto', isFixed:true, createdAt: SV()
+      uid:'auto', isFixed:true, isAnnual: isAnnual, createdAt: SV()
     });
   });
   batch.set(db.collection('autoApplied').doc(mk), {done:true});
@@ -583,14 +602,19 @@ async function renderGastos() {
         ? '<div class="empty">Sin gastos fijos configurados</div>'
         : fixeds.map(f => {
             const cat = cats[f.category]||{icon:'📦',name:'Sin categoría'};
+            const isAnnual = f.freq === 'annual';
+            const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+            const metaText = isAnnual
+              ? `${cat.name} · día ${f.day} de ${MESES[f.month] ?? ''} · cada año`
+              : `${cat.name} · día ${f.day} · cada mes`;
             return `<div class="list-item">
               <div class="item-icon">${cat.icon}</div>
               <div class="item-info">
-                <div class="item-name">${f.name}</div>
-                <div class="item-meta">${cat.name} · día ${f.day}</div>
+                <div class="item-name">${f.name} ${isAnnual ? '<span class="fixed-tag" style="background:var(--amber-light);color:var(--amber)">anual</span>' : '<span class="fixed-tag">mensual</span>'}</div>
+                <div class="item-meta">${metaText}</div>
               </div>
               <div class="item-right">
-                <span class="amount-neutral">${fmt(f.amount)} €/mes</span>
+                <span class="amount-neutral">${fmt(f.amount)} €</span>
                 <button class="icon-btn" onclick="deleteFixed('${f.id}')">🗑️</button>
               </div>
             </div>`;
@@ -674,10 +698,18 @@ async function deleteExpense(id) {
 }
 
 // ─── FIXED CRUD ───────────────────────────────────────────
+function toggleFixedMonth() {
+  const isAnnual = document.getElementById('fix-freq').value === 'annual';
+  document.getElementById('fix-month-field').style.display = isAnnual ? 'flex' : 'none';
+}
+
 async function openAddFixed() {
   document.getElementById('fix-name').value   = '';
   document.getElementById('fix-amount').value = '';
   document.getElementById('fix-day').value    = '1';
+  document.getElementById('fix-freq').value   = 'monthly';
+  document.getElementById('fix-month').value  = String(new Date().getMonth());
+  document.getElementById('fix-month-field').style.display = 'none';
   await fillCatSelect('fix-cat');
   openModal('modal-fixed');
 }
@@ -687,8 +719,10 @@ async function saveFixed() {
   const amount = parseFloat(document.getElementById('fix-amount').value);
   const cat    = document.getElementById('fix-cat').value;
   const day    = parseInt(document.getElementById('fix-day').value)||1;
+  const freq   = document.getElementById('fix-freq').value;
+  const month  = freq === 'annual' ? parseInt(document.getElementById('fix-month').value) : null;
   if (!name || !amount || !cat) return alert('Rellena todos los campos.');
-  await db.collection('fixed').add({name, amount, category:cat, day});
+  await db.collection('fixed').add({name, amount, category:cat, day, freq, ...(month !== null && {month})});
   closeModal('modal-fixed');
   showScreen('gastos');
 }
@@ -875,62 +909,4 @@ function openEditCat(cat) {
   document.getElementById('edit-cat-id').value  = cat.id;
   document.getElementById('cat-name').value     = cat.name;
   document.getElementById('cat-icon').value     = cat.icon;
-  document.getElementById('cat-budget').value   = cat.budget||0;
-  document.getElementById('modal-cat-title').textContent = 'Editar categoría';
-  openModal('modal-cat');
-}
-
-async function saveCat() {
-  const id     = document.getElementById('edit-cat-id').value;
-  const name   = document.getElementById('cat-name').value.trim();
-  const icon   = document.getElementById('cat-icon').value.trim()||'📦';
-  const budget = parseFloat(document.getElementById('cat-budget').value)||0;
-  if (!name) return alert('Escribe un nombre para la categoría.');
-  if (id) {
-    await db.collection('categories').doc(id).update({name,icon,budget});
-  } else {
-    await db.collection('categories').add({name,icon,budget});
-  }
-  closeModal('modal-cat');
-  showScreen('config');
-}
-
-async function deleteCat(id) {
-  if (!confirm('¿Eliminar esta categoría? Los gastos asociados no se borrarán.')) return;
-  await db.collection('categories').doc(id).delete();
-  showScreen('config');
-}
-
-// ─── CONFIG VALUES ────────────────────────────────────────
-function openCfgVal(field, label, current) {
-  cfgField = field;
-  document.getElementById('modal-cfg-title').textContent = label;
-  document.getElementById('modal-cfg-label').textContent = label + ' (€)';
-  document.getElementById('modal-cfg-input').value = current;
-  openModal('modal-cfg');
-}
-
-async function saveCfgVal() {
-  const val = parseFloat(document.getElementById('modal-cfg-input').value);
-  if (!cfgField || isNaN(val)) return;
-  await db.collection('settings').doc('global').update({[cfgField]: val});
-  closeModal('modal-cfg');
-  showScreen('config');
-}
-
-// ─── CAT SELECT ───────────────────────────────────────────
-async function fillCatSelect(selectId, selectedId) {
-  const snap = await db.collection('categories').get();
-  const sel  = document.getElementById(selectId);
-  sel.innerHTML = '';
-  snap.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d.id;
-    opt.textContent = d.data().icon + ' ' + d.data().name;
-    if (d.id === selectedId) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-</script>
-</body>
-</html>
+  document.getElementById('cat-bu
