@@ -17,7 +17,7 @@
   --amber:#b8730a;--amber-light:#fef7e8;
   --border:#e5e0d8;--radius:12px;--radius-sm:8px;
 }
-body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-height:100vh;max-width:480px;margin:0 auto;position:relative;overflow-x:hidden}
+body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-height:100vh;max-width:480px;margin:0 auto;overflow-x:hidden}
 #auth-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;gap:1.5rem}
 .app-logo{font-size:2.5rem;font-weight:700;color:var(--green);letter-spacing:-1px}
 .app-subtitle{color:var(--text2);font-size:0.95rem;text-align:center;font-style:italic}
@@ -94,10 +94,19 @@ body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-heig
 .chart-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
 .chart-bar{width:100%;border-radius:3px 3px 0 0;min-height:2px}
 .chart-label{font-size:0.64rem;font-family:system-ui,sans-serif}
-.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.75rem}
-.filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:0.75rem;cursor:pointer;font-family:system-ui,sans-serif;color:var(--text2)}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0}
+.filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);font-size:0.75rem;cursor:pointer;font-family:system-ui,sans-serif;color:var(--text2);transition:all .15s}
 .filter-btn.active{background:var(--green);color:white;border-color:var(--green)}
 .info-box{background:var(--surface2);border-radius:var(--radius-sm);padding:8px 12px;font-family:system-ui,sans-serif;font-size:0.82rem;color:var(--text2);margin-bottom:0.75rem}
+/* Monthly budget table */
+.mb-table{width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:0.85rem}
+.mb-table th{text-align:left;color:var(--text2);font-weight:600;padding:6px 4px;border-bottom:2px solid var(--border);font-size:0.75rem}
+.mb-table td{padding:6px 4px;border-bottom:1px solid var(--border)}
+.mb-table tr:last-child td{border-bottom:none}
+.mb-table input{width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;text-align:right}
+.mb-table input:focus{border-color:var(--green);outline:none}
+.mb-month-label{color:var(--text);font-size:0.85rem}
+.mb-custom{color:var(--amber);font-size:0.7rem;margin-left:4px}
 </style>
 </head>
 <body>
@@ -147,7 +156,7 @@ body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-heig
 <div class="modal-overlay" id="modal-expense" onclick="overlayClose(event,'modal-expense')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h3 id="modal-expense-title">Añadir gasto</h3>
+    <h3 id="modal-expense-title">Añadir movimiento</h3>
     <input type="hidden" id="edit-exp-id">
     <div class="field"><label>Tipo</label>
       <select id="exp-type" onchange="toggleExpType()">
@@ -213,16 +222,19 @@ body{font-family:'Georgia',serif;background:var(--bg);color:var(--text);min-heig
   </div>
 </div>
 
-<!-- MODAL: PRESUPUESTO MENSUAL -->
+<!-- MODAL: PRESUPUESTOS POR MES -->
 <div class="modal-overlay" id="modal-monthly-budget" onclick="overlayClose(event,'modal-monthly-budget')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h3 id="modal-mb-title">Presupuesto de este mes</h3>
-    <p style="font-family:system-ui,sans-serif;font-size:0.85rem;color:var(--text2);margin-bottom:1rem" id="modal-mb-desc"></p>
-    <div class="field"><label>Presupuesto para este mes (€)</label><input type="number" id="mb-amount" placeholder="0" min="0" step="0.01"></div>
-    <div style="display:flex;gap:8px;margin-top:4px">
+    <h3 id="modal-mb-title">Presupuesto mensual</h3>
+    <p style="font-family:system-ui,sans-serif;font-size:0.82rem;color:var(--text2);margin-bottom:1rem" id="modal-mb-desc"></p>
+    <table class="mb-table">
+      <thead><tr><th>Mes</th><th style="text-align:right">Presupuesto (€)</th></tr></thead>
+      <tbody id="mb-table-body"></tbody>
+    </table>
+    <div style="display:flex;gap:8px;margin-top:1.25rem">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-monthly-budget')">Cancelar</button>
-      <button class="btn" style="flex:2" onclick="saveMonthlyBudget()">Guardar</button>
+      <button class="btn" style="flex:2" onclick="saveMonthlyBudgets()">Guardar</button>
     </div>
   </div>
 </div>
@@ -273,8 +285,10 @@ let currentUser = null;
 let currentScreen = 'dashboard';
 let viewMonth = new Date(); viewMonth.setDate(1);
 let cfgField = null;
-let mbCatId = null; let mbCatName = '';
-let activeFilter = 'todos';
+let mbCatId = null;
+
+// State para la pantalla de gastos
+let gastosState = { allItems:[], cats:{}, activeFilter:'todos' };
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MESES_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -296,7 +310,7 @@ const SV = () => firebase.firestore.FieldValue.serverTimestamp();
 
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-function overlayClose(e,id) { if(e.target.id===id) closeModal(id); }
+function overlayClose(e,id){ if(e.target.id===id) closeModal(id); }
 function pctColor(p){ return p>100?'fill-red':p>80?'fill-amber':'fill-green'; }
 function textColor(p){ return p>100?'var(--red)':p>80?'var(--amber)':'var(--text2)'; }
 
@@ -304,10 +318,10 @@ function textColor(p){ return p>100?'var(--red)':p>80?'var(--amber)':'var(--text
 let isRegister = false;
 function toggleAuthMode(){
   isRegister=!isRegister;
-  document.getElementById('auth-title').textContent = isRegister?'Crear cuenta':'Entrar';
-  document.querySelector('#auth-screen .btn').textContent = isRegister?'Crear cuenta':'Entrar';
-  document.querySelector('.btn-secondary').textContent = isRegister?'¿Ya tienes cuenta? Entra':'¿No tienes cuenta? Regístrate';
-  document.getElementById('name-field').style.display = isRegister?'flex':'none';
+  document.getElementById('auth-title').textContent=isRegister?'Crear cuenta':'Entrar';
+  document.querySelector('#auth-screen .btn').textContent=isRegister?'Crear cuenta':'Entrar';
+  document.querySelector('#auth-screen .btn-secondary').textContent=isRegister?'¿Ya tienes cuenta? Entra':'¿No tienes cuenta? Regístrate';
+  document.getElementById('name-field').style.display=isRegister?'flex':'none';
   document.getElementById('auth-err').textContent='';
 }
 async function doAuth(){
@@ -335,19 +349,15 @@ async function initGlobalData(){
   }
 }
 function confirmLogout(){ if(confirm('¿Cerrar sesión?')) auth.signOut(); }
-
 auth.onAuthStateChanged(async user=>{
   if(user){
-    currentUser=user;
-    await initGlobalData();
+    currentUser=user; await initGlobalData();
     const ud=await db.collection('users').doc(user.uid).get();
     const name=ud.exists?ud.data().name:user.email.split('@')[0];
     document.getElementById('avatar-btn').textContent=name.charAt(0).toUpperCase();
     document.getElementById('auth-screen').style.display='none';
     document.getElementById('app').style.display='flex';
-    updateTopbarMonth();
-    await autoApplyFixed();
-    showScreen('dashboard');
+    updateTopbarMonth(); await autoApplyFixed(); showScreen('dashboard');
   } else {
     currentUser=null;
     document.getElementById('auth-screen').style.display='flex';
@@ -372,12 +382,11 @@ async function autoApplyFixed(){
   const batch=db.batch();
   fixedSnap.forEach(doc=>{
     const f=doc.data();
-    const isAnnual=f.freq==='annual';
-    if(isAnnual && f.month!==month) return;
+    if(f.freq==='annual' && f.month!==month) return;
     const day=Math.min(f.day||1,new Date(year,month+1,0).getDate());
     const ref=db.collection('expenses').doc();
     batch.set(ref,{amount:f.amount,description:f.name,category:f.category,
-      date:TS(new Date(year,month,day)),monthKey:mk,uid:'auto',isFixed:true,isAnnual:isAnnual,createdAt:SV()});
+      date:TS(new Date(year,month,day)),monthKey:mk,uid:'auto',isFixed:true,isAnnual:f.freq==='annual',createdAt:SV()});
   });
   batch.set(db.collection('autoApplied').doc(mk),{done:true});
   await batch.commit();
@@ -389,23 +398,41 @@ function showScreen(name){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('nav-'+name)?.classList.add('active');
   document.getElementById('main-content').innerHTML='<div class="spinner">Cargando...</div>';
-  activeFilter='todos';
   ({dashboard:renderDashboard,gastos:renderGastos,ahorro:renderAhorro,config:renderConfig})[name]?.();
+}
+
+// ── HELPERS: budget para un mes concreto ─────────────────
+// Devuelve el presupuesto de una cat para el mes actual
+// Prioridad: monthlyBudgets[catId][monthIndex] > cat.budget > 0
+function getBudgetForMonth(cat, monthlyBudgets, monthIndex){
+  const mb = monthlyBudgets[cat.id];
+  if(mb && mb[monthIndex] !== undefined) return mb[monthIndex];
+  return cat.budget || 0;
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────
 async function renderDashboard(){
   const mk=monthKey(viewMonth);
-  const [settSnap,catsSnap,expSnap,closedSnap,incSnap]=await Promise.all([
+  const monthIndex=viewMonth.getMonth();
+  const [settSnap,catsSnap,expSnap,closedSnap,incSnap,mbSnap]=await Promise.all([
     db.collection('settings').doc('global').get(),
     db.collection('categories').get(),
     db.collection('expenses').where('monthKey','==',mk).get(),
     db.collection('closedMonths').doc(mk).get(),
     db.collection('incomes').where('monthKey','==',mk).get(),
+    db.collection('monthlyBudgets').where('catId','!=','__none__').get(),
   ]);
   const s=settSnap.data()||{income:3400,savingsBalance:0,savingsGoal:20000,monthlyGoal:400};
   const cats={};
   catsSnap.forEach(d=>cats[d.id]={...d.data(),id:d.id});
+
+  // monthlyBudgets[catId][monthIndex] = amount
+  const monthlyBudgets={};
+  mbSnap.forEach(d=>{
+    const mb=d.data();
+    if(!monthlyBudgets[mb.catId]) monthlyBudgets[mb.catId]={};
+    monthlyBudgets[mb.catId][mb.monthIndex]=mb.amount;
+  });
 
   let totalSpent=0; const catSpend={};
   expSnap.forEach(d=>{ const e=d.data(); totalSpent+=e.amount; catSpend[e.category]=(catSpend[e.category]||0)+e.amount; });
@@ -419,11 +446,6 @@ async function renderDashboard(){
   const savPct=Math.min(100,Math.round(((s.savingsBalance||0)/(s.savingsGoal||1))*100));
   const onTarget=remaining>=(s.monthlyGoal||400);
 
-  // Obtener presupuestos mensuales personalizados
-  const monthBudgets={};
-  const mbSnap=await db.collection('monthlyBudgets').where('monthKey','==',mk).get();
-  mbSnap.forEach(d=>{ const mb=d.data(); monthBudgets[mb.catId]=mb.amount; });
-
   const months=[];
   for(let i=5;i>=0;i--){
     const d=new Date(viewMonth.getFullYear(),viewMonth.getMonth()-i,1);
@@ -433,6 +455,13 @@ async function renderDashboard(){
   const mTotals={};
   multiSnap.forEach(d=>{ const e=d.data(); mTotals[e.monthKey]=(mTotals[e.monthKey]||0)+e.amount; });
   const maxVal=Math.max(totalIncome,...Object.values(mTotals),1);
+
+  // Solo mostrar categorías con presupuesto > 0 o con gasto ese mes
+  const visibleCats=Object.values(cats).filter(cat=>{
+    const budget=getBudgetForMonth(cat,monthlyBudgets,monthIndex);
+    const spent=catSpend[cat.id]||0;
+    return budget>0 || spent>0;
+  });
 
   const el=document.getElementById('main-content');
   el.innerHTML=`
@@ -444,7 +473,7 @@ async function renderDashboard(){
       </div>
       <div style="display:flex;justify-content:space-between;font-size:0.73rem;color:var(--text2);font-family:system-ui,sans-serif">
         <span>Gastado: <strong>${fmt(totalSpent)} €</strong></span>
-        <span>Ingresos: ${fmt(totalIncome)} €${extraIncome>0?` <span style="color:var(--green)">(+${fmt(extraIncome)} extra)</span>`:''}</span>
+        <span>Ingresos: ${fmt(totalIncome)} €${extraIncome>0?` <span style="color:var(--green)">(+${fmt(extraIncome)})</span>`:''}</span>
       </div>
       ${isClosed?'<div style="margin-top:10px"><span class="badge badge-green">✓ Mes cerrado</span></div>':''}
     </div>
@@ -472,23 +501,24 @@ async function renderDashboard(){
 
     <div class="card">
       <div class="card-title">Gasto por categoría</div>
-      ${Object.values(cats).map(cat=>{
-        const spent=catSpend[cat.id]||0;
-        const budget=monthBudgets[cat.id]!==undefined?monthBudgets[cat.id]:cat.budget;
-        const p=budget>0?Math.min(200,Math.round((spent/budget)*100)):0;
-        const hasCustom=monthBudgets[cat.id]!==undefined;
-        return `<div class="list-item">
-          <div class="item-icon">${cat.icon}</div>
-          <div class="item-info">
-            <div class="item-name" style="display:flex;align-items:center;gap:4px">${cat.name}${hasCustom?'<span class="fixed-tag" style="background:var(--amber-light);color:var(--amber)">mes</span>':''}</div>
-            <div class="progress-bar" style="margin-top:4px"><div class="progress-fill ${pctColor(p)}" style="width:${Math.min(100,p)}%"></div></div>
-            <div class="item-meta">${fmt(spent)} / ${fmt(budget)} €</div>
-          </div>
-          <div class="item-right">
-            <span style="font-size:0.8rem;font-weight:600;font-family:system-ui,sans-serif;color:${textColor(p)}">${p}%</span>
-          </div>
-        </div>`;
-      }).join('')}
+      ${visibleCats.length===0?'<div class="empty">Sin categorías con presupuesto este mes</div>':
+        visibleCats.map(cat=>{
+          const spent=catSpend[cat.id]||0;
+          const budget=getBudgetForMonth(cat,monthlyBudgets,monthIndex);
+          const hasCustom=monthlyBudgets[cat.id]?.[monthIndex]!==undefined;
+          const p=budget>0?Math.min(200,Math.round((spent/budget)*100)):100;
+          return `<div class="list-item">
+            <div class="item-icon">${cat.icon}</div>
+            <div class="item-info">
+              <div class="item-name" style="display:flex;align-items:center;gap:4px">${cat.name}${hasCustom?'<span class="fixed-tag" style="background:var(--amber-light);color:var(--amber)">mes</span>':''}</div>
+              <div class="progress-bar" style="margin-top:4px"><div class="progress-fill ${pctColor(p)}" style="width:${Math.min(100,p)}%"></div></div>
+              <div class="item-meta">${fmt(spent)} / ${fmt(budget)} €</div>
+            </div>
+            <div class="item-right">
+              <span style="font-size:0.8rem;font-weight:600;font-family:system-ui,sans-serif;color:${textColor(p)}">${p}%</span>
+            </div>
+          </div>`;
+        }).join('')}
     </div>
 
     <div class="card">
@@ -509,7 +539,7 @@ async function renderDashboard(){
   `;
 }
 
-// ── GASTOS (detalle con filtros e ingresos) ────────────────
+// ── GASTOS ────────────────────────────────────────────────
 async function renderGastos(){
   const mk=monthKey(viewMonth);
   const [catsSnap,expSnap,incSnap]=await Promise.all([
@@ -525,17 +555,15 @@ async function renderGastos(){
   const incomes=[];
   incSnap.forEach(d=>incomes.push({id:d.id,...d.data(),_type:'ingreso'}));
 
-  // Mezclar y ordenar por fecha desc
-  const allItems=[...expenses,...incomes].sort((a,b)=>{
-    const da=a.date?.seconds||0; const db2=b.date?.seconds||0; return db2-da;
-  });
+  const allItems=[...expenses,...incomes].sort((a,b)=>(b.date?.seconds||0)-(a.date?.seconds||0));
 
   const totalGastos=expenses.reduce((s,e)=>s+e.amount,0);
   const totalIngresos=incomes.reduce((s,e)=>s+e.amount,0);
-
-  // Totales por categoría
   const catTotals={};
   expenses.forEach(e=>{ catTotals[e.category]=(catTotals[e.category]||0)+e.amount; });
+
+  // Guardar estado global para filtros
+  gastosState={allItems, cats, activeFilter:'todos'};
 
   const el=document.getElementById('main-content');
   el.innerHTML=`
@@ -556,61 +584,68 @@ async function renderGastos(){
     </div>
 
     <div class="card">
-      <div class="card-title">Filtrar por categoría</div>
-      <div class="filter-row">
-        <button class="filter-btn active" id="filter-todos" onclick="applyFilter('todos',${JSON.stringify(allItems).replace(/"/g,'&quot;')},${JSON.stringify(cats).replace(/"/g,'&quot;')})">Todos</button>
-        <button class="filter-btn" id="filter-ingresos" onclick="applyFilter('ingresos',${JSON.stringify(allItems).replace(/"/g,'&quot;')},${JSON.stringify(cats).replace(/"/g,'&quot;')})">💚 Ingresos</button>
-        ${Object.values(cats).filter(c=>catTotals[c.id]).map(c=>`
-          <button class="filter-btn" id="filter-${c.id}" onclick="applyFilter('${c.id}',${JSON.stringify(allItems).replace(/"/g,'&quot;')},${JSON.stringify(cats).replace(/"/g,'&quot;')})">${c.icon} ${c.name}</button>
-        `).join('')}
+      <div class="card-title">Filtrar</div>
+      <div class="filter-row" id="filter-row">
+        <button class="filter-btn active" onclick="applyFilter('todos')">Todos</button>
+        <button class="filter-btn" onclick="applyFilter('ingresos')">💚 Ingresos</button>
+        ${Object.values(cats).filter(c=>catTotals[c.id]).map(c=>
+          `<button class="filter-btn" onclick="applyFilter('${c.id}')">${c.icon} ${c.name}</button>`
+        ).join('')}
       </div>
     </div>
 
     <div class="card" id="items-card">
       <div class="card-title" id="items-title">Todos los movimientos</div>
-      ${renderItemsList(allItems,cats,'todos')}
+      <div id="items-list">${buildItemsList(allItems,cats,'todos')}</div>
     </div>
   `;
 }
 
-function renderItemsList(items,cats,filter){
+function buildItemsList(items,cats,filter){
   const filtered = filter==='todos' ? items
     : filter==='ingresos' ? items.filter(i=>i._type==='ingreso')
     : items.filter(i=>i._type==='gasto' && i.category===filter);
-
   if(filtered.length===0) return '<div class="empty">Sin movimientos</div>';
-
   return filtered.map(e=>{
     const isIngreso=e._type==='ingreso';
     const cat=isIngreso?{icon:'💚',name:'Ingreso extra'}:(cats[e.category]||{icon:'📦',name:'Sin categoría'});
     const dateStr=e.date?.toDate?e.date.toDate().toLocaleDateString('es-ES',{day:'2-digit',month:'short'}):'';
-    const safeE=JSON.stringify(e).replace(/'/g,"&#39;").replace(/"/g,'&quot;');
+    const safeId=e.id; const safeType=e._type;
+    const safeE=JSON.stringify({...e,date:undefined,createdAt:undefined})
+      .replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     return `<div class="list-item">
       <div class="item-icon">${cat.icon}</div>
       <div class="item-info">
-        <div class="item-name">${e.description||cat.name} ${e.isFixed?'<span class="fixed-tag">fijo</span>':''}</div>
+        <div class="item-name">${e.description||cat.name}${e.isFixed?' <span class="fixed-tag">fijo</span>':''}</div>
         <div class="item-meta">${cat.name} · ${dateStr}</div>
       </div>
       <div class="item-right">
         <span class="${isIngreso?'amount-green':'amount-red'}">${isIngreso?'+':'-'}${fmt(e.amount)} €</span>
-        <button class="icon-btn" onclick='editItem("${e.id}","${e._type}",${safeE})'>✏️</button>
-        <button class="icon-btn" onclick="deleteItem('${e.id}','${e._type}')">🗑️</button>
+        <button class="icon-btn" onclick="editItemById('${safeId}','${safeType}')">✏️</button>
+        <button class="icon-btn" onclick="deleteItem('${safeId}','${safeType}')">🗑️</button>
       </div>
     </div>`;
   }).join('');
 }
 
-function applyFilter(filter, items, cats){
-  activeFilter=filter;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('filter-'+filter)?.classList.add('active');
+function applyFilter(filter){
+  gastosState.activeFilter=filter;
+  // Actualizar botones
+  document.querySelectorAll('#filter-row .filter-btn').forEach(b=>{
+    b.classList.remove('active');
+  });
+  // Encontrar el botón correcto por su onclick
+  document.querySelectorAll('#filter-row .filter-btn').forEach(b=>{
+    if(b.getAttribute('onclick')===`applyFilter('${filter}')`) b.classList.add('active');
+  });
   const titles={todos:'Todos los movimientos',ingresos:'Ingresos extraordinarios'};
-  const title=titles[filter]||(cats[filter]?cats[filter].icon+' '+cats[filter].name:'');
+  const cat=gastosState.cats[filter];
+  const title=titles[filter]||(cat?`${cat.icon} ${cat.name}`:'');
   document.getElementById('items-title').textContent=title;
-  document.getElementById('items-card').innerHTML=`<div class="card-title">${title}</div>`+renderItemsList(items,cats,filter);
+  document.getElementById('items-list').innerHTML=buildItemsList(gastosState.allItems,gastosState.cats,filter);
 }
 
-// ── EXPENSE / INCOME CRUD ─────────────────────────────────
+// ── EXPENSE/INCOME CRUD ───────────────────────────────────
 function toggleExpType(){
   const isIngreso=document.getElementById('exp-type').value==='ingreso';
   document.getElementById('exp-cat-field').style.display=isIngreso?'none':'flex';
@@ -628,16 +663,19 @@ async function openAddExpense(){
   openModal('modal-expense');
 }
 
-async function editItem(id,type,e){
+async function editItemById(id,type){
+  // Buscar en el estado
+  const item=gastosState.allItems.find(i=>i.id===id);
+  if(!item) return;
   document.getElementById('edit-exp-id').value=id;
   document.getElementById('modal-expense-title').textContent='Editar movimiento';
   document.getElementById('exp-type').value=type==='ingreso'?'ingreso':'gasto';
-  document.getElementById('exp-amount').value=e.amount;
-  document.getElementById('exp-desc').value=e.description||'';
-  const ds=e.date?.seconds?new Date(e.date.seconds*1000).toISOString().split('T')[0]:new Date().toISOString().split('T')[0];
+  document.getElementById('exp-amount').value=item.amount;
+  document.getElementById('exp-desc').value=item.description||'';
+  const ds=item.date?.seconds?new Date(item.date.seconds*1000).toISOString().split('T')[0]:new Date().toISOString().split('T')[0];
   document.getElementById('exp-date').value=ds;
   document.getElementById('exp-cat-field').style.display=type==='ingreso'?'none':'flex';
-  if(type!=='ingreso') await fillCatSelect('exp-cat',e.category);
+  if(type!=='ingreso') await fillCatSelect('exp-cat',item.category);
   openModal('modal-expense');
 }
 
@@ -667,17 +705,14 @@ async function saveExpense(){
 
 async function deleteItem(id,type){
   if(!confirm('¿Eliminar este movimiento?')) return;
-  const col=type==='ingreso'?'incomes':'expenses';
-  await db.collection(col).doc(id).delete();
+  await db.collection(type==='ingreso'?'incomes':'expenses').doc(id).delete();
   showScreen('gastos');
 }
 
 // ── FIXED CRUD ────────────────────────────────────────────
 function toggleFixedMonth(){
-  const isAnnual=document.getElementById('fix-freq').value==='annual';
-  document.getElementById('fix-month-field').style.display=isAnnual?'flex':'none';
+  document.getElementById('fix-month-field').style.display=document.getElementById('fix-freq').value==='annual'?'flex':'none';
 }
-
 async function openAddFixed(){
   document.getElementById('edit-fix-id').value='';
   document.getElementById('modal-fixed-title').textContent='Nuevo gasto fijo';
@@ -690,7 +725,6 @@ async function openAddFixed(){
   await fillCatSelect('fix-cat');
   openModal('modal-fixed');
 }
-
 async function openEditFixed(f){
   document.getElementById('edit-fix-id').value=f.id;
   document.getElementById('modal-fixed-title').textContent='Editar gasto fijo';
@@ -703,7 +737,6 @@ async function openEditFixed(f){
   await fillCatSelect('fix-cat',f.category);
   openModal('modal-fixed');
 }
-
 async function saveFixed(){
   const editId=document.getElementById('edit-fix-id').value;
   const name=document.getElementById('fix-name').value.trim();
@@ -716,14 +749,11 @@ async function saveFixed(){
   const data={name,amount,category:cat,day,freq,...(month!==null&&{month})};
   if(editId) await db.collection('fixed').doc(editId).update(data);
   else await db.collection('fixed').add(data);
-  closeModal('modal-fixed');
-  showScreen('config');
+  closeModal('modal-fixed'); showScreen('config');
 }
-
 async function deleteFixed(id){
   if(!confirm('¿Eliminar este gasto fijo?')) return;
-  await db.collection('fixed').doc(id).delete();
-  showScreen('config');
+  await db.collection('fixed').doc(id).delete(); showScreen('config');
 }
 
 // ── AHORRO ────────────────────────────────────────────────
@@ -736,9 +766,8 @@ async function renderAhorro(){
   const bal=s.savingsBalance||0; const goal=s.savingsGoal||20000; const mGoal=s.monthlyGoal||400;
   const savPct=Math.min(100,Math.round((bal/goal)*100));
   const history=[]; histSnap.forEach(d=>history.push({id:d.id,...d.data()}));
-  const avg=history.length?history.reduce((a,m)=>a+(m.transferred||m.surplus||0),0)/history.length:mGoal;
-  const toGo=Math.max(0,goal-bal);
-  const eta=avg>0?Math.ceil(toGo/avg):null;
+  const avg=history.length?history.reduce((a,m)=>a+(m.transferred??m.surplus??0),0)/history.length:mGoal;
+  const eta=avg>0?Math.ceil(Math.max(0,goal-bal)/avg):null;
 
   const el=document.getElementById('main-content');
   el.innerHTML=`
@@ -762,8 +791,7 @@ async function renderAhorro(){
       <div class="card-title">Historial de cierres</div>
       ${history.length===0?'<div class="empty">Todavía no hay meses cerrados</div>':
         history.map(m=>{
-          const transferred=m.transferred!==undefined?m.transferred:(m.surplus||0);
-          const pos=transferred>=0;
+          const transferred=m.transferred??m.surplus??0; const pos=transferred>=0;
           return `<div class="month-history-row">
             <div>
               <div>${m.label||m.id}</div>
@@ -778,38 +806,35 @@ async function renderAhorro(){
 
 // ── CLOSE MONTH ───────────────────────────────────────────
 function openCloseMonth(spent,income){
-  const surplus=income-spent;
-  const pos=surplus>=0;
+  const surplus=income-spent; const pos=surplus>=0;
   document.getElementById('close-summary').innerHTML=`
     <div class="stats-row">
       <div class="stat-card"><div class="stat-label">Total gastado</div><div class="stat-value red">${fmt(spent)} €</div></div>
-      <div class="stat-card"><div class="stat-label">${pos?'Excedente':'Déficit'} calculado</div><div class="stat-value ${pos?'green':'red'}">${pos?'+':''}${fmt(surplus)} €</div></div>
+      <div class="stat-card"><div class="stat-label">${pos?'Excedente':'Déficit'}</div><div class="stat-value ${pos?'green':'red'}">${pos?'+':''}${fmt(surplus)} €</div></div>
     </div>
-    <p style="margin-top:0.75rem;font-family:system-ui,sans-serif;font-size:0.82rem;color:var(--text2)">Indica el importe que queréis transferir a ahorro:</p>
+    <p style="margin-top:0.75rem;font-family:system-ui,sans-serif;font-size:0.82rem;color:var(--text2)">Indica el importe que transferís a ahorro:</p>
   `;
-  document.getElementById('close-transfer').value=pos?surplus.toFixed(2):'0';
+  document.getElementById('close-transfer').value=Math.max(0,surplus).toFixed(2);
   openModal('modal-close');
 }
-
 async function confirmCloseMonth(){
   const mk=monthKey(viewMonth);
   const transferred=parseFloat(document.getElementById('close-transfer').value)||0;
-  const settSnap=await db.collection('settings').doc('global').get();
+  const [settSnap,expSnap,incSnap]=await Promise.all([
+    db.collection('settings').doc('global').get(),
+    db.collection('expenses').where('monthKey','==',mk).get(),
+    db.collection('incomes').where('monthKey','==',mk).get(),
+  ]);
   const s=settSnap.data();
-  const expSnap=await db.collection('expenses').where('monthKey','==',mk).get();
-  const incSnap=await db.collection('incomes').where('monthKey','==',mk).get();
   let totalSpent=0; expSnap.forEach(d=>totalSpent+=d.data().amount);
   let extraIncome=0; incSnap.forEach(d=>extraIncome+=d.data().amount);
   const totalIncome=(s.income||3400)+extraIncome;
-  const surplus=totalIncome-totalSpent;
-  const newBalance=(s.savingsBalance||0)+transferred;
-  await db.collection('settings').doc('global').update({savingsBalance:newBalance});
+  await db.collection('settings').doc('global').update({savingsBalance:(s.savingsBalance||0)+transferred});
   await db.collection('closedMonths').doc(mk).set({
-    surplus,transferred,totalSpent,income:totalIncome,
+    surplus:totalIncome-totalSpent,transferred,totalSpent,income:totalIncome,
     label:monthLabel(viewMonth),closedAt:SV()
   });
-  closeModal('modal-close');
-  showScreen('dashboard');
+  closeModal('modal-close'); showScreen('dashboard');
 }
 
 // ── CONFIG ────────────────────────────────────────────────
@@ -828,8 +853,8 @@ async function renderConfig(){
   el.innerHTML=`
     <div class="card">
       <div class="card-title">Configuración general</div>
-      ${[['income','Ingresos mensuales',s.income||3400],['monthlyGoal','Objetivo de ahorro mensual',s.monthlyGoal||400],
-        ['savingsGoal','Objetivo de ahorro total',s.savingsGoal||20000],['savingsBalance','Saldo actual de ahorro',s.savingsBalance||0]
+      ${[['income','Ingresos mensuales',s.income||3400],['monthlyGoal','Objetivo ahorro mensual',s.monthlyGoal||400],
+        ['savingsGoal','Objetivo ahorro total',s.savingsGoal||20000],['savingsBalance','Saldo ahorro actual',s.savingsBalance||0]
       ].map(([field,label,val])=>`
         <div class="config-item">
           <div><div class="config-label">${label}</div><div class="config-val">${fmt(val)} €</div></div>
@@ -838,13 +863,13 @@ async function renderConfig(){
     </div>
 
     <div class="card">
-      <div class="section-header" style="margin-bottom:0.75rem">
+      <div class="section-header" style="margin-bottom:0.5rem">
         <span class="card-title" style="margin:0">Categorías</span>
         <button class="add-btn" onclick="openAddCat()">+ Nueva</button>
       </div>
-      <div class="info-box">Toca el lápiz para editar el presupuesto base o ajustar el presupuesto de un mes concreto.</div>
+      <div style="font-family:system-ui,sans-serif;font-size:0.78rem;color:var(--text3);margin-bottom:0.75rem">Toca 📅 para configurar presupuesto por mes</div>
       ${cats.map(cat=>{
-        const safeC=JSON.stringify(cat).replace(/'/g,"&#39;").replace(/"/g,'&quot;');
+        const safeC=JSON.stringify(cat).replace(/'/g,"\\'").replace(/"/g,'&quot;');
         return `<div class="list-item">
           <div class="item-icon">${cat.icon}</div>
           <div class="item-info">
@@ -852,7 +877,7 @@ async function renderConfig(){
             <div class="item-meta">Base: ${fmt(cat.budget||0)} €/mes</div>
           </div>
           <div class="item-right">
-            <button class="config-edit-btn" onclick="openMonthlyBudget('${cat.id}','${cat.name}',${cat.budget||0})">Mes</button>
+            <button class="icon-btn" title="Presupuesto por mes" onclick="openMonthlyBudget('${cat.id}','${cat.name}',${cat.budget||0})">📅</button>
             <button class="icon-btn" onclick='openEditCat(${safeC})'>✏️</button>
             <button class="icon-btn" onclick="deleteCat('${cat.id}')">🗑️</button>
           </div>
@@ -870,7 +895,7 @@ async function renderConfig(){
           const cat=catsMap[f.category]||{icon:'📦',name:'Sin categoría'};
           const isAnnual=f.freq==='annual';
           const meta=isAnnual?`${cat.name} · día ${f.day} de ${MESES_SHORT[f.month??0]} · anual`:`${cat.name} · día ${f.day} · mensual`;
-          const safeF=JSON.stringify(f).replace(/'/g,"&#39;").replace(/"/g,'&quot;');
+          const safeF=JSON.stringify(f).replace(/'/g,"\\'").replace(/"/g,'&quot;');
           return `<div class="list-item">
             <div class="item-icon">${cat.icon}</div>
             <div class="item-info">
@@ -890,28 +915,47 @@ async function renderConfig(){
   `;
 }
 
-// ── MONTHLY BUDGET ────────────────────────────────────────
-async function openMonthlyBudget(catId,catName,baseBudget){
-  const mk=monthKey(viewMonth);
-  mbCatId=catId; mbCatName=catName;
-  const snap=await db.collection('monthlyBudgets').where('monthKey','==',mk).where('catId','==',catId).limit(1).get();
-  const current=snap.empty?baseBudget:snap.docs[0].data().amount;
-  document.getElementById('modal-mb-title').textContent=`Presupuesto de ${catName}`;
-  document.getElementById('modal-mb-desc').textContent=`Mes: ${monthLabel(viewMonth)} · Base: ${fmt(baseBudget)} €`;
-  document.getElementById('mb-amount').value=current;
+// ── MONTHLY BUDGET (tabla 12 meses) ───────────────────────
+let mbCatBaseBudget = 0;
+
+async function openMonthlyBudget(catId, catName, baseBudget){
+  mbCatId=catId; mbCatBaseBudget=baseBudget;
+  // Cargar valores existentes para esta categoría
+  const snap=await db.collection('monthlyBudgets').where('catId','==',catId).get();
+  const saved={}; // monthIndex -> amount
+  snap.forEach(d=>{ const mb=d.data(); saved[mb.monthIndex]=mb.amount; });
+
+  document.getElementById('modal-mb-title').textContent=`Presupuesto · ${catName}`;
+  document.getElementById('modal-mb-desc').textContent=`Presupuesto base: ${fmt(baseBudget)} €/mes. Rellena los meses que tengan un importe diferente (0 = sin gasto previsto).`;
+
+  const tbody=document.getElementById('mb-table-body');
+  tbody.innerHTML=MESES.map((mes,i)=>{
+    const val=saved[i]!==undefined?saved[i]:'';
+    const isCustom=saved[i]!==undefined;
+    return `<tr>
+      <td class="mb-month-label">${mes}${isCustom?'<span class="mb-custom">✓</span>':''}</td>
+      <td style="text-align:right"><input type="number" id="mb-${i}" value="${val}" placeholder="${fmt(baseBudget)}" min="0" step="0.01"></td>
+    </tr>`;
+  }).join('');
+
   openModal('modal-monthly-budget');
 }
 
-async function saveMonthlyBudget(){
-  const amount=parseFloat(document.getElementById('mb-amount').value);
-  if(isNaN(amount)) return;
-  const mk=monthKey(viewMonth);
-  const snap=await db.collection('monthlyBudgets').where('monthKey','==',mk).where('catId','==',mbCatId).limit(1).get();
-  if(snap.empty){
-    await db.collection('monthlyBudgets').add({monthKey:mk,catId:mbCatId,amount});
-  } else {
-    await db.collection('monthlyBudgets').doc(snap.docs[0].id).update({amount});
+async function saveMonthlyBudgets(){
+  if(!mbCatId) return;
+  // Borrar los existentes para esta categoría
+  const existing=await db.collection('monthlyBudgets').where('catId','==',mbCatId).get();
+  const batch=db.batch();
+  existing.forEach(d=>batch.delete(d.ref));
+  // Guardar los que tengan valor
+  for(let i=0;i<12;i++){
+    const val=document.getElementById('mb-'+i).value;
+    if(val!=='' && val!==null){
+      const ref=db.collection('monthlyBudgets').doc();
+      batch.set(ref,{catId:mbCatId,monthIndex:i,amount:parseFloat(val)||0});
+    }
   }
+  await batch.commit();
   closeModal('modal-monthly-budget');
   showScreen('config');
 }
@@ -941,13 +985,11 @@ async function saveCat(){
   if(!name) return alert('Escribe un nombre.');
   if(id) await db.collection('categories').doc(id).update({name,icon,budget});
   else await db.collection('categories').add({name,icon,budget});
-  closeModal('modal-cat');
-  showScreen('config');
+  closeModal('modal-cat'); showScreen('config');
 }
 async function deleteCat(id){
   if(!confirm('¿Eliminar esta categoría?')) return;
-  await db.collection('categories').doc(id).delete();
-  showScreen('config');
+  await db.collection('categories').doc(id).delete(); showScreen('config');
 }
 
 // ── CONFIG VALUES ─────────────────────────────────────────
@@ -962,8 +1004,7 @@ async function saveCfgVal(){
   const val=parseFloat(document.getElementById('modal-cfg-input').value);
   if(!cfgField||isNaN(val)) return;
   await db.collection('settings').doc('global').update({[cfgField]:val});
-  closeModal('modal-cfg');
-  showScreen('config');
+  closeModal('modal-cfg'); showScreen('config');
 }
 
 // ── CAT SELECT ────────────────────────────────────────────
