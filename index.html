@@ -574,7 +574,7 @@ async function renderGastos() {
   const mk = monthKey(viewMonth);
   const [catsSnap, expSnap, fixedSnap] = await Promise.all([
     db.collection('categories').get(),
-    db.collection('expenses').where('monthKey','==',mk).orderBy('date','desc').get(),
+    db.collection('expenses').where('monthKey','==',mk).get(),
     db.collection('fixed').get(),
   ]);
   const cats = {};
@@ -909,4 +909,62 @@ function openEditCat(cat) {
   document.getElementById('edit-cat-id').value  = cat.id;
   document.getElementById('cat-name').value     = cat.name;
   document.getElementById('cat-icon').value     = cat.icon;
-  document.getElementById('cat-bu
+  document.getElementById('cat-budget').value   = cat.budget||0;
+  document.getElementById('modal-cat-title').textContent = 'Editar categoría';
+  openModal('modal-cat');
+}
+
+async function saveCat() {
+  const id     = document.getElementById('edit-cat-id').value;
+  const name   = document.getElementById('cat-name').value.trim();
+  const icon   = document.getElementById('cat-icon').value.trim()||'📦';
+  const budget = parseFloat(document.getElementById('cat-budget').value)||0;
+  if (!name) return alert('Escribe un nombre para la categoría.');
+  if (id) {
+    await db.collection('categories').doc(id).update({name,icon,budget});
+  } else {
+    await db.collection('categories').add({name,icon,budget});
+  }
+  closeModal('modal-cat');
+  showScreen('config');
+}
+
+async function deleteCat(id) {
+  if (!confirm('¿Eliminar esta categoría? Los gastos asociados no se borrarán.')) return;
+  await db.collection('categories').doc(id).delete();
+  showScreen('config');
+}
+
+// ─── CONFIG VALUES ────────────────────────────────────────
+function openCfgVal(field, label, current) {
+  cfgField = field;
+  document.getElementById('modal-cfg-title').textContent = label;
+  document.getElementById('modal-cfg-label').textContent = label + ' (€)';
+  document.getElementById('modal-cfg-input').value = current;
+  openModal('modal-cfg');
+}
+
+async function saveCfgVal() {
+  const val = parseFloat(document.getElementById('modal-cfg-input').value);
+  if (!cfgField || isNaN(val)) return;
+  await db.collection('settings').doc('global').update({[cfgField]: val});
+  closeModal('modal-cfg');
+  showScreen('config');
+}
+
+// ─── CAT SELECT ───────────────────────────────────────────
+async function fillCatSelect(selectId, selectedId) {
+  const snap = await db.collection('categories').get();
+  const sel  = document.getElementById(selectId);
+  sel.innerHTML = '';
+  snap.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id;
+    opt.textContent = d.data().icon + ' ' + d.data().name;
+    if (d.id === selectedId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+</script>
+</body>
+</html>
